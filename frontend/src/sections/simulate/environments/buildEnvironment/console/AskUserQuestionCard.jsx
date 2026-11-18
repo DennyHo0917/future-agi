@@ -1,6 +1,14 @@
 import PropTypes from "prop-types";
-import { useState } from "react";
-import { Box, Stack, Typography, Button, TextField, Checkbox } from "@mui/material";
+import { useRef, useState } from "react";
+import {
+  Box,
+  Stack,
+  Typography,
+  Button,
+  TextField,
+  Checkbox,
+  Radio,
+} from "@mui/material";
 import Iconify from "src/components/iconify";
 
 import ChatMarkdown from "./ChatMarkdown";
@@ -8,7 +16,8 @@ import ChatMarkdown from "./ChatMarkdown";
 // Prompts are the model's free text. Plain questions must show exactly as written,
 // so one stray signal like `# of rooms` or a single `code` span is not enough: it
 // takes two, or a table's `|---|---|` row (not just any line with a pipe in it).
-const MARKDOWN_SIGNAL = /^(#{1,6} |[-*+] |\d+[.)] |> |```)|\*\*[^*\s][^*]*\*\*|`[^`\n]+`/gm;
+const MARKDOWN_SIGNAL =
+  /^(#{1,6} |[-*+] |\d+[.)] |> |```)|\*\*[^*\s][^*]*\*\*|`[^`\n]+`/gm;
 const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*\|[\s|:-]*$/m;
 const looksLikeMarkdown = (text = "") =>
   TABLE_DIVIDER.test(text) || (text.match(MARKDOWN_SIGNAL) || []).length >= 2;
@@ -20,12 +29,24 @@ function Prompt({ text, sx }) {
     return (
       <ChatMarkdown
         text={text}
-        sx={{ typography: "s1", "& > p:first-of-type": { fontWeight: 500 }, ...sx }}
+        sx={{
+          typography: "s1",
+          "& > p:first-of-type": { fontWeight: 500 },
+          ...sx,
+        }}
       />
     );
   }
   return (
-    <Typography sx={{ typography: "s1", fontWeight: 500, whiteSpace: "pre-wrap", color: "text.primary", ...sx }}>
+    <Typography
+      sx={{
+        typography: "s1",
+        fontWeight: 500,
+        whiteSpace: "pre-wrap",
+        color: "text.primary",
+        ...sx,
+      }}
+    >
       {text}
     </Typography>
   );
@@ -62,6 +83,7 @@ export default function AskUserQuestionCard({
 }) {
   const [answer, setAnswer] = useState({ pick: null, picks: [], other: "" });
   const [resolved, setResolved] = useState(null);
+  const otherInput = useRef(null);
 
   const otherIndex = question.options.length;
   const otherActive = answer.other.trim().length > 0;
@@ -81,17 +103,23 @@ export default function AskUserQuestionCard({
     if (question.multiSelect) {
       setAnswer((a) => {
         const has = a.picks.includes(i);
-        return { ...a, picks: has ? a.picks.filter((v) => v !== i) : [...a.picks, i] };
+        return {
+          ...a,
+          picks: has ? a.picks.filter((v) => v !== i) : [...a.picks, i],
+        };
       });
     } else {
-      setAnswer((a) => ({ ...a, pick: i }));
+      // One choice: picking an option clears a typed answer.
+      setAnswer((a) => ({ ...a, pick: i, other: "" }));
     }
   };
 
   const chosenLabels = () => {
     const labels = question.multiSelect
       ? answer.picks.map((i) => question.options[i]?.label).filter(Boolean)
-      : answer.pick != null ? [question.options[answer.pick]?.label].filter(Boolean) : [];
+      : answer.pick != null
+        ? [question.options[answer.pick]?.label].filter(Boolean)
+        : [];
     const other = answer.other.trim();
     return other ? [...labels, other] : labels;
   };
@@ -128,13 +156,23 @@ export default function AskUserQuestionCard({
       }}
     >
       {/* header */}
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5 }}>
+      <Stack
+        direction="row"
+        alignItems="flex-start"
+        spacing={1}
+        sx={{ px: 2, py: 1.5 }}
+      >
         <Box
           sx={{
-            px: 0.75, py: 0.25, borderRadius: "4px", flexShrink: 0,
+            px: 0.75,
+            py: 0.25,
+            borderRadius: "4px",
+            flexShrink: 0,
             bgcolor: "action.selected",
             color: "text.secondary",
-            typography: "s3", fontWeight: 500, fontVariantNumeric: "tabular-nums",
+            typography: "s3",
+            fontWeight: 500,
+            fontVariantNumeric: "tabular-nums",
           }}
         >
           {question.step}/{question.total}
@@ -143,7 +181,12 @@ export default function AskUserQuestionCard({
       </Stack>
 
       {/* options */}
-      <Stack spacing={0.5} sx={{ px: 1.5, pb: 1 }}>
+      <Stack
+        spacing={0.75}
+        role={question.multiSelect ? "group" : "radiogroup"}
+        aria-label={question.prompt}
+        sx={{ px: 1.5, pb: 1 }}
+      >
         {question.options.map((opt, i) => (
           <AskOptionRow
             key={opt.label}
@@ -151,7 +194,6 @@ export default function AskUserQuestionCard({
             description={opt.description}
             selected={rowIsSelected(i)}
             multi={question.multiSelect}
-            index={i + 1}
             onSelect={() => pick(i)}
           />
         ))}
@@ -159,14 +201,26 @@ export default function AskUserQuestionCard({
           label="Other"
           selected={otherActive}
           multi={question.multiSelect}
-          index={otherIndex + 1}
-          onSelect={() => { /* focused when the user types */ }}
-          bottomChildren={(
+          // Picked by typing: the row hands focus to its text box.
+          onSelect={() => otherInput.current?.focus()}
+          bottomChildren={
             <TextField
-              size="small" fullWidth variant="outlined"
+              size="small"
+              fullWidth
+              variant="outlined"
               value={answer.other}
-              onChange={(e) => setAnswer((a) => ({ ...a, other: e.target.value }))}
+              onChange={(e) => {
+                const other = e.target.value;
+                // One choice: typing an answer clears the picked option.
+                setAnswer((a) => ({
+                  ...a,
+                  other,
+                  pick: question.multiSelect || !other.trim() ? a.pick : null,
+                }));
+              }}
               placeholder="Type your own answer here"
+              inputRef={otherInput}
+              inputProps={{ "aria-label": "Other answer" }}
               InputProps={{
                 sx: {
                   typography: "m3",
@@ -175,7 +229,7 @@ export default function AskUserQuestionCard({
               }}
               sx={{ mt: 0.75 }}
             />
-          )}
+          }
         />
       </Stack>
 
@@ -184,11 +238,21 @@ export default function AskUserQuestionCard({
         <Box flex={1} />
         <Stack direction="row" spacing={1}>
           {onSkip && (
-            <Button size="small" variant="outlined" color="inherit" onClick={skip}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="inherit"
+              onClick={skip}
+            >
               Skip
             </Button>
           )}
-          <Button size="small" variant="contained" onClick={submit} disabled={!canSubmit}>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={submit}
+            disabled={!canSubmit}
+          >
             Submit
           </Button>
         </Stack>
@@ -206,59 +270,83 @@ AskUserQuestionCard.propTypes = {
   answerText: PropTypes.string,
 };
 
-function AskOptionRow({ label, description, selected, multi, index, onSelect, bottomChildren }) {
+function AskOptionRow({
+  label,
+  description,
+  selected,
+  multi,
+  onSelect,
+  bottomChildren,
+}) {
+  const Control = multi ? Checkbox : Radio;
   return (
+    // The row is the control: it takes the click, the keys and the checked state.
     <Box
+      role={multi ? "checkbox" : "radio"}
+      aria-checked={Boolean(selected)}
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
       sx={{
-        p: 1.5, borderRadius: "8px", cursor: "pointer",
-        bgcolor: "background.neutral",
-        "&:hover": { bgcolor: "action.hover" },
+        p: 1.5,
+        borderRadius: "8px",
+        cursor: "pointer",
+        border: "1px solid",
+        borderColor: selected ? "text.primary" : "divider",
+        bgcolor: selected ? "action.selected" : "background.paper",
+        "&:hover": { bgcolor: selected ? "action.selected" : "action.hover" },
+        "&:focus-visible": {
+          outline: "2px solid",
+          outlineColor: "text.primary",
+          outlineOffset: 2,
+        },
       }}
     >
-      <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+      <Stack direction="row" alignItems="flex-start" spacing={1.25}>
+        <Control
+          checked={Boolean(selected)}
+          tabIndex={-1}
+          size="small"
+          onChange={() => {}}
+          inputProps={{ "aria-hidden": true }}
+          sx={{ p: 0, mt: "1px", flexShrink: 0, pointerEvents: "none" }}
+        />
         <Box flex={1} minWidth={0}>
-          <Typography sx={{ typography: "s1", fontWeight: 500, color: "text.primary" }}>
+          <Typography
+            sx={{
+              typography: "s1",
+              fontWeight: selected ? 500 : 400,
+              color: "text.primary",
+            }}
+          >
             {label}
           </Typography>
           {description && (
-            <Typography sx={{ typography: "s3", color: "text.secondary", mt: 0.25 }}>
+            <Typography
+              sx={{ typography: "s3", color: "text.secondary", mt: 0.25 }}
+            >
               {description}
             </Typography>
           )}
         </Box>
-        {multi ? (
-          // The theme's checkbox as a display: the row owns the click.
-          <Checkbox
-            checked={Boolean(selected)}
-            tabIndex={-1}
-            size="small"
-            onChange={() => {}}
-            inputProps={{ "aria-hidden": true }}
-            sx={{ p: 0, flexShrink: 0, pointerEvents: "none" }}
-          />
-        ) : (
-          <Box
-            sx={{
-              minWidth: 24, height: 20, px: 0.75, borderRadius: "4px", flexShrink: 0, mt: "1px",
-              display: "grid", placeItems: "center",
-              bgcolor: selected ? "text.primary" : "action.selected",
-              color: selected ? "background.paper" : "text.secondary",
-              typography: "s3", fontWeight: 500, fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {index}
-          </Box>
-        )}
       </Stack>
       {bottomChildren}
     </Box>
   );
 }
 AskOptionRow.propTypes = {
-  label: PropTypes.string, description: PropTypes.string,
-  selected: PropTypes.bool, multi: PropTypes.bool, index: PropTypes.number,
-  onSelect: PropTypes.func, bottomChildren: PropTypes.node,
+  label: PropTypes.string,
+  description: PropTypes.string,
+  selected: PropTypes.bool,
+  multi: PropTypes.bool,
+  onSelect: PropTypes.func,
+  bottomChildren: PropTypes.node,
 };
 
 /**
@@ -269,33 +357,54 @@ AskOptionRow.propTypes = {
 function ResolvedSummary({ question, answer, text }) {
   const picks = answer.skipped
     ? []
-    : (question.multiSelect
-      ? (answer.picks || []).map((i) => question.options[i]?.label).filter(Boolean)
-      : answer.pick != null ? [question.options[answer.pick]?.label].filter(Boolean) : []);
+    : question.multiSelect
+      ? (answer.picks || [])
+          .map((i) => question.options[i]?.label)
+          .filter(Boolean)
+      : answer.pick != null
+        ? [question.options[answer.pick]?.label].filter(Boolean)
+        : [];
   const other = answer.other?.trim();
   // An externally-resolved question (from a refreshed conversation) carries only
   // the answer text — show it verbatim rather than reconstructing picks.
-  const summary = text != null
-    ? text
-    : answer.skipped
-      ? "Skipped"
-      : (other && picks.length === 0 ? other : [...picks, other].filter(Boolean).join(" · "));
+  const summary =
+    text != null
+      ? text
+      : answer.skipped
+        ? "Skipped"
+        : other && picks.length === 0
+          ? other
+          : [...picks, other].filter(Boolean).join(" · ");
 
   return (
     <Box
       sx={{
         borderRadius: "8px",
-        border: "1px solid", borderColor: "divider",
+        border: "1px solid",
+        borderColor: "divider",
         bgcolor: "background.neutral",
-        px: 2, py: 1.5,
+        px: 2,
+        py: 1.5,
       }}
     >
       <Prompt text={question.prompt} />
-      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.75 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={0.75}
+        sx={{ mt: 0.75 }}
+      >
         <Iconify
-          icon={answer.skipped ? "solar:close-circle-linear" : "solar:check-circle-bold"}
+          icon={
+            answer.skipped
+              ? "solar:close-circle-linear"
+              : "solar:check-circle-bold"
+          }
           width={14}
-          sx={{ color: answer.skipped ? "text.secondary" : "status.success.solid", flexShrink: 0 }}
+          sx={{
+            color: answer.skipped ? "text.secondary" : "status.success.solid",
+            flexShrink: 0,
+          }}
         />
         <Typography sx={{ typography: "s1", color: "text.secondary" }}>
           {summary}
@@ -304,4 +413,8 @@ function ResolvedSummary({ question, answer, text }) {
     </Box>
   );
 }
-ResolvedSummary.propTypes = { question: PropTypes.object, answer: PropTypes.object, text: PropTypes.string };
+ResolvedSummary.propTypes = {
+  question: PropTypes.object,
+  answer: PropTypes.object,
+  text: PropTypes.string,
+};
